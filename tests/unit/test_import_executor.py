@@ -10,14 +10,18 @@ from photo_importer.domain.media_file import MediaFile
 
 
 class _FakeFilesystemGateway:
-    def __init__(self, existing_paths=(), raise_on_copy=False):
+    def __init__(self, existing_paths=(), raise_on_copy=False, sizes=None):
         self._existing_paths = set(existing_paths)
         self._raise_on_copy = raise_on_copy
+        self._sizes = sizes or {}
         self.copied = []
         self.created_parents_for = []
 
     def exists(self, path):
         return path in self._existing_paths
+
+    def file_size(self, path):
+        return self._sizes.get(path, 100)
 
     def make_parent_directories(self, path):
         self.created_parents_for.append(path)
@@ -54,6 +58,20 @@ def test_skips_file_that_already_exists_without_copying():
 
     assert result.outcome is ImportOutcome.SKIPPED_DUPLICATE
     assert gateway.copied == []
+
+
+def test_recopies_existing_file_whose_size_differs_from_source():
+    entry = _entry()
+    gateway = _FakeFilesystemGateway(
+        existing_paths={entry.destination_path},
+        sizes={entry.destination_path: 10},
+    )
+    executor = ImportExecutor(gateway)
+
+    [result] = executor.execute([entry]).results
+
+    assert result.outcome is ImportOutcome.COPIED
+    assert len(gateway.copied) == 1
 
 
 def test_records_failure_when_copy_raises_os_error():

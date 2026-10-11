@@ -12,3 +12,7 @@ class CancellationToken:
     @property
     def is_cancel_requested(self) -> bool:
         return self._event.is_set()
+
+    def wait(self, seconds: float) -> bool:
+        """Sleeps up to `seconds`, waking early if cancelled; returns whether cancel was requested."""
+        return self._event.wait(seconds)

@@ -9,6 +9,7 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import GLib, Gtk  # noqa: E402
 
 from photo_importer.application.cancellation_token import CancellationToken
+from photo_importer.application.duty_cycle_throttle import DutyCycleThrottle
 from photo_importer.application.import_executor import ImportExecutor
 from photo_importer.application.import_planner import ImportPlanner
 from photo_importer.application.source_folder_scanner import SourceFolderScanner
@@ -16,9 +17,18 @@ from photo_importer.domain.app_settings import AppSettings
 from photo_importer.domain.destination_pattern import DestinationPattern
 from photo_importer.domain.import_entry_result import ImportEntryResult
 from photo_importer.domain.import_outcome import ImportOutcome
+from photo_importer.domain.throttle_level import ThrottleLevel
+from photo_importer.domain.throttle_policy import ThrottlePolicy
 from photo_importer.infrastructure.app_settings_store import AppSettingsStore
 from photo_importer.infrastructure.exif_date_reader import ExifDateReader
 from photo_importer.infrastructure.filesystem_gateway import RealFilesystemGateway
+
+
+_THROTTLE_CHOICES = {
+    ThrottleLevel.GENTLE: "Gentle (25 MB/s, 30 s rest every minute) - recommended for NAS",
+    ThrottleLevel.NORMAL: "Normal (60 MB/s, 30 s rest every 5 minutes)",
+    ThrottleLevel.OFF: "Off (full speed)",
+}
 
 
 class MainWindow(Gtk.ApplicationWindow):
@@ -28,7 +38,6 @@ class MainWindow(Gtk.ApplicationWindow):
 
         filesystem_gateway = RealFilesystemGateway()
         self._scanner = SourceFolderScanner(filesystem_gateway, ExifDateReader(filesystem_gateway))
-        self._executor = ImportExecutor(filesystem_gateway)
         self._settings_store = AppSettingsStore(AppSettingsStore.default_config_path())
         settings = self._settings_store.load()
 
@@ -38,6 +47,11 @@ class MainWindow(Gtk.ApplicationWindow):
         self._pattern_entry = Gtk.Entry(text=settings.destination_pattern.template)
         self._pattern_entry.connect("changed", self._on_pattern_changed)
         self._pattern_preview = Gtk.Label(xalign=0)
+
+        self._throttle_combo = Gtk.ComboBoxText()
+        for level in _THROTTLE_CHOICES:
+            self._throttle_combo.append(level.value, _THROTTLE_CHOICES[level])
+        self._throttle_combo.set_active_id(settings.throttle_level.value)
 
         defaults = AppSettings.defaults()
         self._defaults_label = Gtk.Label(
@@ -80,6 +94,7 @@ class MainWindow(Gtk.ApplicationWindow):
         root.pack_start(self._source_chooser.widget, False, False, 0)
         root.pack_start(self._destination_chooser.widget, False, False, 0)
         root.pack_start(self._build_pattern_row(), False, False, 0)
+        root.pack_start(self._build_throttle_row(), False, False, 0)
         root.pack_start(self._defaults_label, False, False, 0)
         root.pack_start(settings_buttons, False, False, 0)
         root.pack_start(run_buttons, False, False, 0)
@@ -100,6 +115,12 @@ class MainWindow(Gtk.ApplicationWindow):
         row.pack_start(label, False, False, 0)
         row.pack_start(self._pattern_entry, False, False, 0)
         row.pack_start(self._pattern_preview, False, False, 0)
+        return row
+
+    def _build_throttle_row(self) -> Gtk.Box:
+        row = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        row.pack_start(Gtk.Label(xalign=0, label="Drive protection (limits speed and adds cooling pauses)"), False, False, 0)
+        row.pack_start(self._throttle_combo, False, False, 0)
         return row
 
     def _on_pattern_changed(self, _entry: Gtk.Entry) -> None:
@@ -125,6 +146,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self._source_chooser.entry.set_text(str(defaults.source_folder))
         self._destination_chooser.entry.set_text(str(defaults.destination_folder))
         self._pattern_entry.set_text(defaults.destination_pattern.template)
+        self._throttle_combo.set_active_id(defaults.throttle_level.value)
         self._status_label.set_text("Fields reset to factory defaults (not saved yet).")
 
     def _current_settings(self) -> Optional[AppSettings]:
@@ -137,6 +159,7 @@ class MainWindow(Gtk.ApplicationWindow):
             source_folder=Path(self._source_chooser.selected_path),
             destination_folder=Path(self._destination_chooser.selected_path),
             destination_pattern=pattern,
+            throttle_level=ThrottleLevel(self._throttle_combo.get_active_id()),
         )
 
     def _on_start_clicked(self, _button: Gtk.Button) -> None:
@@ -159,7 +182,7 @@ class MainWindow(Gtk.ApplicationWindow):
         thread = threading.Thread(
             target=self._run_import,
             args=(settings.source_folder, settings.destination_folder, settings.destination_pattern,
-                  self._cancellation_token),
+                  settings.throttle_level, self._cancellation_token),
             daemon=True,
         )
         thread.start()
@@ -175,6 +198,7 @@ class MainWindow(Gtk.ApplicationWindow):
         source_folder: Path,
         destination_folder: Path,
         pattern: DestinationPattern,
+        throttle_level: ThrottleLevel,
         cancellation_token: CancellationToken,
     ) -> None:
         try:
@@ -200,10 +224,12 @@ class MainWindow(Gtk.ApplicationWindow):
         plan_entries = ImportPlanner(destination_folder, pattern).plan_for(list(scan_result.media_files))
         self._copy_progress_total = len(plan_entries)
         GLib.idle_add(self._progress_bar.set_fraction, 0.0)
-        summary = self._executor.execute(
+        policy = ThrottlePolicy.for_level(throttle_level)
+        summary = self._build_executor(policy).execute(
             plan_entries,
             on_progress=self._report_progress,
             cancellation_token=cancellation_token,
+            throttle=DutyCycleThrottle(policy, on_rest=self._report_rest),
         )
 
         message = (
@@ -215,6 +241,13 @@ class MainWindow(Gtk.ApplicationWindow):
             message = f"Cancelled. {message}"
         GLib.idle_add(self._status_label.set_text, message)
         GLib.idle_add(self._on_run_finished)
+
+    @staticmethod
+    def _build_executor(policy: ThrottlePolicy) -> ImportExecutor:
+        return ImportExecutor(RealFilesystemGateway(max_bytes_per_second=policy.max_bytes_per_second))
+
+    def _report_rest(self, rest_seconds: float) -> None:
+        GLib.idle_add(self._status_label.set_text, f"Resting {rest_seconds:.0f} s to let the drives cool...")
 
     def _on_run_finished(self) -> None:
         self._cancellation_token = None

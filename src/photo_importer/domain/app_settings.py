@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from photo_importer.domain.destination_pattern import DestinationPattern
+from photo_importer.domain.throttle_level import ThrottleLevel
 
 _DEFAULT_SOURCE_FOLDER = Path("/mnt/share home/Photos")
 _DEFAULT_DESTINATION_FOLDER = Path("/mnt/photo")
@@ -13,6 +14,7 @@ class AppSettings:
     source_folder: Path
     destination_folder: Path
     destination_pattern: DestinationPattern
+    throttle_level: ThrottleLevel = ThrottleLevel.GENTLE
 
     def __post_init__(self) -> None:
         if not self.source_folder.parts:

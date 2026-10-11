@@ -5,6 +5,7 @@ from pathlib import Path
 
 from photo_importer.domain.app_settings import AppSettings
 from photo_importer.domain.destination_pattern import DestinationPattern
+from photo_importer.domain.throttle_level import ThrottleLevel
 
 _CONFIG_FILE_NAME = "config.json"
 
@@ -27,6 +28,7 @@ class AppSettingsStore:
                 source_folder=Path(raw["source_folder"]),
                 destination_folder=Path(raw["destination_folder"]),
                 destination_pattern=DestinationPattern(raw["destination_pattern"]),
+                throttle_level=ThrottleLevel(raw.get("throttle_level", ThrottleLevel.GENTLE.value)),
             )
         except (KeyError, TypeError, ValueError):
             return AppSettings.defaults()
@@ -36,6 +38,7 @@ class AppSettingsStore:
             "source_folder": str(settings.source_folder),
             "destination_folder": str(settings.destination_folder),
             "destination_pattern": settings.destination_pattern.template,
+            "throttle_level": settings.throttle_level.value,
         }
         self._config_path.parent.mkdir(parents=True, exist_ok=True)
         self._config_path.write_text(json.dumps(payload, indent=2) + "\n")
