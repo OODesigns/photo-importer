@@ -1,0 +1,12 @@
+Package: photo-importer
+Version: @VERSION@
+Section: graphics
+Priority: optional
+Architecture: all
+Depends: python3 (>= 3.10), python3-gi, gir1.2-gtk-3.0, python3-pil
+Maintainer: Photo Importer Maintainers <noreply@example.invalid>
+Description: Visual photo importer for NAS folders
+ GTK3 desktop app that copies photos from a chosen source folder into a
+ dated, configurable folder structure on a NAS (default destination:
+ /mnt/photo, matching the <year>/<month>-<day>/<category>/<filename>
+ convention already in use there).

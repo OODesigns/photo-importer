@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "photo-importer"
+version = "0.1.0"
+description = "Visual tool to import photos from a chosen folder into a dated NAS folder structure"
+requires-python = ">=3.10"
+dependencies = [
+    "Pillow>=9.0",
+]
+
+[project.scripts]
+photo-importer = "photo_importer.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

@@ -1,0 +1,5 @@
+Pillow>=9.0
+# PyGObject is best installed via your distro's package manager on Mint/Ubuntu:
+#   sudo apt install python3-gi gir1.2-gtk-3.0
+# Install it with pip only if you are not using --system-site-packages.
+PyGObject>=3.42

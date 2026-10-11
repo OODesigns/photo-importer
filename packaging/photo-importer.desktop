@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Photo Importer
+Comment=Import photos from a folder into a dated NAS folder structure
+Exec=photo-importer
+Icon=photo-importer
+Terminal=false
+Categories=Graphics;Photography;
+StartupNotify=true
