@@ -74,6 +74,31 @@ def test_recopies_existing_file_whose_size_differs_from_source():
     assert len(gateway.copied) == 1
 
 
+def test_stops_after_max_copies_and_flags_batch_limit():
+    gateway = _FakeFilesystemGateway()
+    executor = ImportExecutor(gateway)
+    entries = [_entry(Path(f"/dest/{i}.jpg")) for i in range(5)]
+
+    summary = executor.execute(entries, max_copies=2)
+
+    assert summary.batch_limit_reached is True
+    assert summary.cancelled is False
+    assert len(gateway.copied) == 2
+
+
+def test_skipped_files_do_not_count_toward_max_copies():
+    skipped = _entry(Path("/dest/skip.jpg"))
+    fresh = [_entry(Path(f"/dest/{i}.jpg")) for i in range(2)]
+    gateway = _FakeFilesystemGateway(existing_paths={skipped.destination_path})
+    executor = ImportExecutor(gateway)
+
+    summary = executor.execute([skipped, *fresh], max_copies=2)
+
+    assert summary.skipped_count == 1
+    assert summary.copied_count == 2
+    assert summary.batch_limit_reached is False
+
+
 def test_records_failure_when_copy_raises_os_error():
     gateway = _FakeFilesystemGateway(raise_on_copy=True)
     executor = ImportExecutor(gateway)

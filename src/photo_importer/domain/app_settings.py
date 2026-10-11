@@ -15,8 +15,11 @@ class AppSettings:
     destination_folder: Path
     destination_pattern: DestinationPattern
     throttle_level: ThrottleLevel = ThrottleLevel.GENTLE
+    batch_limit: int = 0
 
     def __post_init__(self) -> None:
+        if self.batch_limit < 0:
+            raise ValueError("AppSettings batch limit must not be negative")
         if not self.source_folder.parts:
             raise ValueError("AppSettings requires a source folder")
         if not self.destination_folder.parts:

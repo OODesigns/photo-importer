@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Callable, List, Optional
 
 from photo_importer.application.cancellation_token import CancellationToken
+from photo_importer.application.duty_cycle_throttle import DutyCycleThrottle
 from photo_importer.domain.file_category import FileCategory
 from photo_importer.domain.file_extension import FileExtension
 from photo_importer.domain.media_file import MediaFile
@@ -23,9 +24,12 @@ class SourceFolderScanner:
         source_folder: Path,
         on_file_found: Optional[FileFoundCallback] = None,
         cancellation_token: Optional[CancellationToken] = None,
+        throttle: Optional[DutyCycleThrottle] = None,
     ) -> ScanResult:
         media_files: List[MediaFile] = []
         for path in self._filesystem_gateway.iter_files(source_folder):
+            if throttle is not None:
+                throttle.rest_if_due(cancellation_token)
             if cancellation_token is not None and cancellation_token.is_cancel_requested:
                 return ScanResult.cancelled_with(media_files)
             category = FileCategory.from_extension(FileExtension.of(path.suffix))

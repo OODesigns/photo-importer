@@ -33,4 +33,5 @@ _POLICIES = {
     ThrottleLevel.OFF: ThrottlePolicy(work_seconds=0, rest_seconds=0, max_bytes_per_second=0),
     ThrottleLevel.NORMAL: ThrottlePolicy(work_seconds=300, rest_seconds=30, max_bytes_per_second=60 * _MEGABYTE),
     ThrottleLevel.GENTLE: ThrottlePolicy(work_seconds=60, rest_seconds=30, max_bytes_per_second=25 * _MEGABYTE),
+    ThrottleLevel.VERY_GENTLE: ThrottlePolicy(work_seconds=60, rest_seconds=60, max_bytes_per_second=10 * _MEGABYTE),
 }

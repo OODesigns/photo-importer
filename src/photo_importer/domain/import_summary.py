@@ -10,10 +10,13 @@ from photo_importer.domain.import_outcome import ImportOutcome
 class ImportSummary:
     results: Tuple[ImportEntryResult, ...]
     cancelled: bool = False
+    batch_limit_reached: bool = False
 
     @staticmethod
-    def of(results: List[ImportEntryResult], cancelled: bool = False) -> "ImportSummary":
-        return ImportSummary(tuple(results), cancelled)
+    def of(
+        results: List[ImportEntryResult], cancelled: bool = False, batch_limit_reached: bool = False
+    ) -> "ImportSummary":
+        return ImportSummary(tuple(results), cancelled, batch_limit_reached)
 
     @property
     def copied_count(self) -> int:

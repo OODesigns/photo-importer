@@ -29,6 +29,7 @@ class AppSettingsStore:
                 destination_folder=Path(raw["destination_folder"]),
                 destination_pattern=DestinationPattern(raw["destination_pattern"]),
                 throttle_level=ThrottleLevel(raw.get("throttle_level", ThrottleLevel.GENTLE.value)),
+                batch_limit=int(raw.get("batch_limit", 0)),
             )
         except (KeyError, TypeError, ValueError):
             return AppSettings.defaults()
@@ -39,6 +40,7 @@ class AppSettingsStore:
             "destination_folder": str(settings.destination_folder),
             "destination_pattern": settings.destination_pattern.template,
             "throttle_level": settings.throttle_level.value,
+            "batch_limit": settings.batch_limit,
         }
         self._config_path.parent.mkdir(parents=True, exist_ok=True)
         self._config_path.write_text(json.dumps(payload, indent=2) + "\n")

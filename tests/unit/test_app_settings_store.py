@@ -1,7 +1,10 @@
 from pathlib import Path
 
+import pytest
+
 from photo_importer.domain.app_settings import AppSettings
 from photo_importer.domain.destination_pattern import DestinationPattern
+from photo_importer.domain.throttle_level import ThrottleLevel
 from photo_importer.infrastructure.app_settings_store import AppSettingsStore
 
 
@@ -25,6 +28,26 @@ def test_save_then_load_round_trips_settings(tmp_path):
     loaded = store.load()
 
     assert loaded == saved
+
+
+def test_save_then_load_round_trips_throttle_level_and_batch_limit(tmp_path):
+    store = AppSettingsStore(tmp_path / "config.json")
+    saved = AppSettings(
+        source_folder=Path("/a"),
+        destination_folder=Path("/b"),
+        destination_pattern=DestinationPattern.default(),
+        throttle_level=ThrottleLevel.VERY_GENTLE,
+        batch_limit=500,
+    )
+
+    store.save(saved)
+
+    assert store.load() == saved
+
+
+def test_app_settings_rejects_negative_batch_limit():
+    with pytest.raises(ValueError):
+        AppSettings(Path("/a"), Path("/b"), DestinationPattern.default(), batch_limit=-1)
 
 
 def test_load_falls_back_to_defaults_on_corrupt_json(tmp_path):

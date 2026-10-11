@@ -71,3 +71,19 @@ def test_scan_stops_early_when_cancellation_requested():
 
     assert result.cancelled
     assert len(result.media_files) == 1
+
+
+def test_scan_rests_via_throttle_before_each_file():
+    files = [Path(f"/source/IMG_{i:04d}.jpg") for i in range(3)]
+
+    class _CountingThrottle:
+        calls = 0
+
+        def rest_if_due(self, _token=None):
+            self.calls += 1
+
+    throttle = _CountingThrottle()
+
+    _scanner(files).scan(Path("/source"), throttle=throttle)
+
+    assert throttle.calls == 3

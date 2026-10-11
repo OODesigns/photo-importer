@@ -25,6 +25,7 @@ from photo_importer.infrastructure.filesystem_gateway import RealFilesystemGatew
 
 
 _THROTTLE_CHOICES = {
+    ThrottleLevel.VERY_GENTLE: "Very gentle (10 MB/s, 60 s rest every minute) - for hot NAS",
     ThrottleLevel.GENTLE: "Gentle (25 MB/s, 30 s rest every minute) - recommended for NAS",
     ThrottleLevel.NORMAL: "Normal (60 MB/s, 30 s rest every 5 minutes)",
     ThrottleLevel.OFF: "Off (full speed)",
@@ -52,6 +53,8 @@ class MainWindow(Gtk.ApplicationWindow):
         for level in _THROTTLE_CHOICES:
             self._throttle_combo.append(level.value, _THROTTLE_CHOICES[level])
         self._throttle_combo.set_active_id(settings.throttle_level.value)
+        self._batch_spin = Gtk.SpinButton.new_with_range(0, 1_000_000, 100)
+        self._batch_spin.set_value(settings.batch_limit)
 
         defaults = AppSettings.defaults()
         self._defaults_label = Gtk.Label(
@@ -121,6 +124,8 @@ class MainWindow(Gtk.ApplicationWindow):
         row = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
         row.pack_start(Gtk.Label(xalign=0, label="Drive protection (limits speed and adds cooling pauses)"), False, False, 0)
         row.pack_start(self._throttle_combo, False, False, 0)
+        row.pack_start(Gtk.Label(xalign=0, label="Stop after this many copied files (0 = no limit; run again to continue)"), False, False, 0)
+        row.pack_start(self._batch_spin, False, False, 0)
         return row
 
     def _on_pattern_changed(self, _entry: Gtk.Entry) -> None:
@@ -147,6 +152,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self._destination_chooser.entry.set_text(str(defaults.destination_folder))
         self._pattern_entry.set_text(defaults.destination_pattern.template)
         self._throttle_combo.set_active_id(defaults.throttle_level.value)
+        self._batch_spin.set_value(defaults.batch_limit)
         self._status_label.set_text("Fields reset to factory defaults (not saved yet).")
 
     def _current_settings(self) -> Optional[AppSettings]:
@@ -160,6 +166,7 @@ class MainWindow(Gtk.ApplicationWindow):
             destination_folder=Path(self._destination_chooser.selected_path),
             destination_pattern=pattern,
             throttle_level=ThrottleLevel(self._throttle_combo.get_active_id()),
+            batch_limit=self._batch_spin.get_value_as_int(),
         )
 
     def _on_start_clicked(self, _button: Gtk.Button) -> None:
@@ -182,7 +189,7 @@ class MainWindow(Gtk.ApplicationWindow):
         thread = threading.Thread(
             target=self._run_import,
             args=(settings.source_folder, settings.destination_folder, settings.destination_pattern,
-                  settings.throttle_level, self._cancellation_token),
+                  settings.throttle_level, settings.batch_limit, self._cancellation_token),
             daemon=True,
         )
         thread.start()
@@ -199,13 +206,16 @@ class MainWindow(Gtk.ApplicationWindow):
         destination_folder: Path,
         pattern: DestinationPattern,
         throttle_level: ThrottleLevel,
+        batch_limit: int,
         cancellation_token: CancellationToken,
     ) -> None:
         try:
+            policy = ThrottlePolicy.for_level(throttle_level)
             scan_result = self._scanner.scan(
                 source_folder,
                 on_file_found=self._report_scan_progress,
                 cancellation_token=cancellation_token,
+                throttle=DutyCycleThrottle(policy, on_rest=self._report_rest),
             )
         except OSError as error:
             GLib.idle_add(self._status_label.set_text, f"Failed to read source folder: {error}")
@@ -224,12 +234,12 @@ class MainWindow(Gtk.ApplicationWindow):
         plan_entries = ImportPlanner(destination_folder, pattern).plan_for(list(scan_result.media_files))
         self._copy_progress_total = len(plan_entries)
         GLib.idle_add(self._progress_bar.set_fraction, 0.0)
-        policy = ThrottlePolicy.for_level(throttle_level)
         summary = self._build_executor(policy).execute(
             plan_entries,
             on_progress=self._report_progress,
             cancellation_token=cancellation_token,
             throttle=DutyCycleThrottle(policy, on_rest=self._report_rest),
+            max_copies=batch_limit,
         )
 
         message = (
@@ -239,6 +249,8 @@ class MainWindow(Gtk.ApplicationWindow):
         )
         if summary.cancelled:
             message = f"Cancelled. {message}"
+        if summary.batch_limit_reached:
+            message = f"Batch limit reached - run again to continue. {message}"
         GLib.idle_add(self._status_label.set_text, message)
         GLib.idle_add(self._on_run_finished)
 

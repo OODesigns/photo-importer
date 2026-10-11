@@ -6,3 +6,4 @@ class ThrottleLevel(Enum):
     OFF = "off"
     NORMAL = "normal"
     GENTLE = "gentle"
+    VERY_GENTLE = "very_gentle"

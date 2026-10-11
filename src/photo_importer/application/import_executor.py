@@ -4,6 +4,7 @@ from typing import Callable, List, Optional
 from photo_importer.application.cancellation_token import CancellationToken
 from photo_importer.application.duty_cycle_throttle import DutyCycleThrottle
 from photo_importer.domain.import_entry_result import ImportEntryResult
+from photo_importer.domain.import_outcome import ImportOutcome
 from photo_importer.domain.import_plan_entry import ImportPlanEntry
 from photo_importer.domain.import_summary import ImportSummary
 from photo_importer.infrastructure.filesystem_gateway import FilesystemGateway
@@ -21,15 +22,20 @@ class ImportExecutor:
         on_progress: Optional[ProgressCallback] = None,
         cancellation_token: Optional[CancellationToken] = None,
         throttle: Optional[DutyCycleThrottle] = None,
+        max_copies: int = 0,
     ) -> ImportSummary:
         results = []
+        copied_so_far = 0
         for entry in plan_entries:
+            if max_copies > 0 and copied_so_far >= max_copies:
+                return ImportSummary.of(results, batch_limit_reached=True)
             if throttle is not None:
                 throttle.rest_if_due(cancellation_token)
             if cancellation_token is not None and cancellation_token.is_cancel_requested:
                 return ImportSummary.of(results, cancelled=True)
             result = self._execute_entry(entry)
             results.append(result)
+            copied_so_far += result.outcome is ImportOutcome.COPIED
             if on_progress is not None:
                 on_progress(result)
         return ImportSummary.of(results)
