@@ -1,4 +1,5 @@
 """GTK window that lets a user pick folders, tweak the destination pattern, and run an import."""
+import math
 import threading
 from pathlib import Path
 from typing import Optional
@@ -258,8 +259,11 @@ class MainWindow(Gtk.ApplicationWindow):
     def _build_executor(policy: ThrottlePolicy) -> ImportExecutor:
         return ImportExecutor(RealFilesystemGateway(max_bytes_per_second=policy.max_bytes_per_second))
 
-    def _report_rest(self, rest_seconds: float) -> None:
-        GLib.idle_add(self._status_label.set_text, f"Resting {rest_seconds:.0f} s to let the drives cool...")
+    def _report_rest(self, remaining_seconds: float) -> None:
+        GLib.idle_add(
+            self._status_label.set_text,
+            f"Resting to let the drives cool - restarting in {math.ceil(remaining_seconds)} s",
+        )
 
     def _on_run_finished(self) -> None:
         self._cancellation_token = None

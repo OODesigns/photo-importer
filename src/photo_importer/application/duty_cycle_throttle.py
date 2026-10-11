@@ -7,6 +7,8 @@ from photo_importer.domain.throttle_policy import ThrottlePolicy
 
 RestCallback = Callable[[float], None]
 
+_TICK_SECONDS = 1.0
+
 
 class DutyCycleThrottle:
     def __init__(
@@ -23,17 +25,19 @@ class DutyCycleThrottle:
     def rest_if_due(self, cancellation_token: Optional[CancellationToken] = None) -> bool:
         if not self._policy.rests_between_work or not self._work_is_due_for_rest():
             return False
-        if self._on_rest is not None:
-            self._on_rest(self._policy.rest_seconds)
-        self._wait(cancellation_token)
+        self._rest(cancellation_token or CancellationToken())
         self._work_started_at = self._clock()
         return True
 
     def _work_is_due_for_rest(self) -> bool:
         return self._clock() - self._work_started_at >= self._policy.work_seconds
 
-    def _wait(self, cancellation_token: Optional[CancellationToken]) -> None:
-        if cancellation_token is None:
-            time.sleep(self._policy.rest_seconds)
-            return
-        cancellation_token.wait(self._policy.rest_seconds)
+    def _rest(self, cancellation_token: CancellationToken) -> None:
+        remaining = self._policy.rest_seconds
+        while remaining > 0:
+            if self._on_rest is not None:
+                self._on_rest(remaining)
+            step = min(_TICK_SECONDS, remaining)
+            if cancellation_token.wait(step):
+                return
+            remaining -= step

@@ -37,6 +37,17 @@ def test_rests_once_work_window_elapses_and_restarts_window():
     assert throttle.rest_if_due() is False
 
 
+def test_rest_reports_remaining_seconds_every_tick():
+    clock = _FakeClock()
+    ticks = []
+    throttle = DutyCycleThrottle(_policy(rest=2.0), clock, on_rest=ticks.append)
+    clock.now = 60
+
+    throttle.rest_if_due()
+
+    assert ticks == [2.0, 1.0]
+
+
 def test_off_policy_never_rests():
     clock = _FakeClock()
     throttle = DutyCycleThrottle(ThrottlePolicy.for_level(ThrottleLevel.OFF), clock)
